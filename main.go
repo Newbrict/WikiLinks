@@ -161,26 +161,18 @@ func main() {
 					linkGraph.MakeEdge(links[v1], links[v2])
 				}
 
-				// if it's the destination add it anyway.
+				// if it's the destination add it anyway, we done!
 				if links[v2] == links[dstWiki] {
 					linkGraph.MakeEdge(links[v1], links[v2])
+					fmt.Println("The page has been reached!, determining links....")
+					wikiChain := extractLink( linkGraph, links[srcWiki], links[dstWiki] )
+					fmt.Printf("Wiki links chain: %s\n", stringifyWikiChain( links, wikiChain ))
+					return
 				}
 
 			}
-
 			// this will be for the next iteration of this loop, concat the slice
 			newLinkBreadth = append(newLinkBreadth, v1Links...)
-		}
-
-
-		for _, curWiki := range newLinkBreadth {
-			if curWiki == dstWiki {
-				fmt.Println("The page has been reached!, determining links....")
-				wikiChain := extractLink( linkGraph, links[srcWiki], links[dstWiki] )
-				fmt.Printf("Wiki links chain: %s\n", stringifyWikiChain( links, wikiChain ))
-				reached = true
-				break
-			}
 		}
 		currentLinkBreadth = newLinkBreadth
 	}
