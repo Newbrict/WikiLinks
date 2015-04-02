@@ -94,6 +94,8 @@ func getWikiLinks(page string) []string{
 			if !strings.Contains(ul, "Special:") &&
 				 !strings.Contains(ul, "Help:") &&
 				 !strings.Contains(ul, "Talk:") &&
+				 !strings.Contains(ul, "Template:") &&
+				 !strings.Contains(ul, "Template_talk:") &&
 				 !strings.Contains(ul, "File:") &&
 				 !strings.Contains(ul, "Portal:") {
 				filteredLinks = append(filteredLinks, ul)
@@ -148,15 +150,31 @@ func main() {
 	currentLinkBreadth := []string{srcWiki}
 	reached := false
 
+	// {source, links}
+	type linkType []string
+	linkChan := make(chan struct {string; linkType})
+	//pair := <-queue
+
 	for !reached {
 		newLinkBreadth = make([]string, 0)
 
 		// go to each link and get their respective links
 		for _, v1 := range currentLinkBreadth {
-			v1Links := getWikiLinks(config.url + v1)
-			var v1LinksFiltered []string
-			fmt.Printf( "Checking %s\n", v1 )
+			go func( v1Value string) {
+				v1Links := getWikiLinks(config.url + v1Value)
+				//fmt.Printf( "Checking %s\n", v1 )
+				linkChan <- struct {string; linkType}{v1Value, v1Links}
+			}(v1)
+		}
 
+		// listen for the requests to come back and process them until we've
+		// exhausted the current breadth
+		var v1LinksFiltered []string
+		for i := 0; i<len(currentLinkBreadth); i++ {
+			ans := <- linkChan
+			v1 := ans.string
+			fmt.Printf("Processing %s\n", v1)
+			v1Links := ans.linkType
 			// add these to the graph and link them
 			for _, v2 := range v1Links {
 				// if the value isn't already in there
