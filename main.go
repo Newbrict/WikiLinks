@@ -71,9 +71,7 @@ func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 			gns := extractLink( g, cn, n2 )
 			if len(gns) > 0 {
 				ret = append(ret, n1)
-				for gi := range gns {
-					ret = append(ret, gns[gi])
-				}
+				ret = append(ret, gns...)
 				return ret
 			}
 		}
@@ -93,7 +91,13 @@ func getWikiLinks(page string) []string{
 		if strings.HasPrefix(ul, "/wiki/") {
 			// Remove anchors
 			ul = strings.Split(ul, "#")[0]
-			filteredLinks = append(filteredLinks, ul)
+			if !strings.Contains(ul, "Special:") &&
+				 !strings.Contains(ul, "Help:") &&
+				 !strings.Contains(ul, "Talk:") &&
+				 !strings.Contains(ul, "File:") &&
+				 !strings.Contains(ul, "Portal:") {
+				filteredLinks = append(filteredLinks, ul)
+			}
 		}
 	}
 
@@ -145,13 +149,13 @@ func main() {
 	reached := false
 
 	for !reached {
-		// clear by slicing, doesn't clear the slice cap, slightly more efficient...
 		newLinkBreadth = make([]string, 0)
 
 		// go to each link and get their respective links
 		for _, v1 := range currentLinkBreadth {
-			fmt.Println( v1 )
 			v1Links := getWikiLinks(config.url + v1)
+			var v1LinksFiltered []string
+			fmt.Printf( "Checking %s\n", v1 )
 
 			// add these to the graph and link them
 			for _, v2 := range v1Links {
@@ -159,6 +163,7 @@ func main() {
 				if _, ok := links[v2]; !ok {
 					links[v2] = linkGraph.MakeNode()
 					linkGraph.MakeEdge(links[v1], links[v2])
+					v1LinksFiltered = append(v1LinksFiltered, v2)
 				}
 
 				// if it's the destination add it anyway, we done!
@@ -172,7 +177,7 @@ func main() {
 
 			}
 			// this will be for the next iteration of this loop, concat the slice
-			newLinkBreadth = append(newLinkBreadth, v1Links...)
+			newLinkBreadth = append(newLinkBreadth, v1LinksFiltered...)
 		}
 		currentLinkBreadth = newLinkBreadth
 	}
