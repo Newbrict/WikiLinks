@@ -28,9 +28,57 @@ func removeDuplicates( links []string ) []string {
 	return ret
 }
 
-func extractLink( g *graph.Graph, n1, n2 graph.Node ) {
-	// have to implement a dfs or bfs or some sort of s here :)
-	return
+func stringifyWikiChain( links map[string]graph.Node, chain []graph.Node ) string {
+	ret := ""
+
+	// assign all the string values to the nodes
+	for k, v := range links {
+		*v.Value = k
+	}
+
+	for i := range chain {
+		if str, ok := (*chain[i].Value).(string); ok {
+			// add arrows
+			if len(ret) > 0 {
+				ret += " -> "
+			}
+			ret += str
+		}
+	}
+	return ret
+
+}
+
+func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
+	var ret []graph.Node
+
+	// same nodes
+	if n1 == n2 {
+		ret = append(ret, n1)
+		return ret
+	}
+
+	// differing nodes
+	neighbors := g.Neighbors(n1)
+	for i := range neighbors {
+		cn := neighbors[i]
+		if cn == n2 {
+			ret = append(ret, n1)
+			ret = append(ret, cn)
+			return ret
+		} else {
+			// recurse
+			gns := extractLink( g, cn, n2 )
+			if len(gns) > 0 {
+				ret = append(ret, n1)
+				for gi := range gns {
+					ret = append(ret, gns[gi])
+				}
+				return ret
+			}
+		}
+	}
+	return ret
 }
 
 func getWikiLinks(page string) []string{
@@ -94,59 +142,46 @@ func main() {
 
 	var newLinkBreadth []string
 	currentLinkBreadth := []string{srcWiki}
+	reached := false
 
-	// clear by slicing, doesn't clear the slice cap, slightly more efficient...
-	newLinkBreadth = make([]string, 0)
+	for !reached {
+		// clear by slicing, doesn't clear the slice cap, slightly more efficient...
+		newLinkBreadth = make([]string, 0)
 
-	// go to each link and get their respective links
-	for _, v1 := range currentLinkBreadth {
-		v1Links := getWikiLinks(config.url + srcWiki)
+		// go to each link and get their respective links
+		for _, v1 := range currentLinkBreadth {
+			fmt.Println( v1 )
+			v1Links := getWikiLinks(config.url + v1)
 
-		// add these to the graph and link them
-		for _, v2 := range v1Links {
-			// if the value isn't already in there
-			if _, ok := links[v2]; !ok {
-				links[v2] = linkGraph.MakeNode()
+			// add these to the graph and link them
+			for _, v2 := range v1Links {
+				// if the value isn't already in there
+				if _, ok := links[v2]; !ok {
+					links[v2] = linkGraph.MakeNode()
+					linkGraph.MakeEdge(links[v1], links[v2])
+				}
+
+				// if it's the destination add it anyway.
+				if links[v2] == links[dstWiki] {
+					linkGraph.MakeEdge(links[v1], links[v2])
+				}
+
 			}
 
-			linkGraph.MakeEdge(links[v1], links[v2])
+			// this will be for the next iteration of this loop, concat the slice
+			newLinkBreadth = append(newLinkBreadth, v1Links...)
 		}
 
-		// this will be for the next iteration of this loop, concat the slice
-		newLinkBreadth = append(newLinkBreadth, v1Links...)
-	}
 
-
-	for _, curWiki := range newLinkBreadth {
-		if curWiki == dstWiki {
-			fmt.Println("Found it!")
-			// not efficient or whatever, but gets the job done.
-			//extractLink(linkGraph, links[srcWiki], links[dstWiki])
-			//for _, v := range paths {
-			//	fmt.Printf("%+v\n", v)
-			//}
-			//fmt.Printf("%+v\n", paths[1])
+		for _, curWiki := range newLinkBreadth {
+			if curWiki == dstWiki {
+				fmt.Println("The page has been reached!, determining links....")
+				wikiChain := extractLink( linkGraph, links[srcWiki], links[dstWiki] )
+				fmt.Printf("Wiki links chain: %s\n", stringifyWikiChain( links, wikiChain ))
+				reached = true
+				break
+			}
 		}
+		currentLinkBreadth = newLinkBreadth
 	}
-
-	currentLinkBreadth = newLinkBreadth
-
-
-
-	// beyond this point is testing material
-
-	//fmt.Println(srcWiki)
-	//fmt.Println(dstWiki)
-
-
-	//linkGraph.MakeEdge(links[srcWiki], links[dstWiki])
-	//neighbors := linkGraph.Neighbors(links[srcWiki])
-	//for _, node := range neighbors {
-	//	for key, linkedNode := range links {
-	//		if linkedNode == node {
-	//			fmt.Printf("Connected to %s\n", key)
-	//		}
-	//	}
-	//}
-
 }
