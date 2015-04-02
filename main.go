@@ -80,10 +80,21 @@ func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 }
 
 func getWikiLinks(page string) []string{
-	res, err := http.Get(page)
-	if err != nil {
-		log.Fatal(err)
+	retries := 5
+
+	var err error
+	var res *http.Response
+	for i := 0; i<retries; i++ {
+		res, err = http.Get(page)
+		if err == nil {
+			break
+		}
 	}
+
+	if err != nil {
+		log.Fatalf("%s (failed after %d retries)\n", err, retries)
+	}
+
 	unfilteredLinks := collectlinks.All(res.Body)
 	var filteredLinks []string
 	for _, ul := range unfilteredLinks {
@@ -153,19 +164,32 @@ func main() {
 	// {source, links}
 	type linkType []string
 	linkChan := make(chan struct {string; linkType})
-	//pair := <-queue
+
+	// rate limiting
+	concurrency := 100
 
 	for !reached {
 		newLinkBreadth = make([]string, 0)
 
+		sem := make(chan bool, concurrency)
 		// go to each link and get their respective links
 		for _, v1 := range currentLinkBreadth {
+		  sem <- true
 			go func( v1Value string) {
+				fmt.Printf( "Requesting %s\n", v1Value )
 				v1Links := getWikiLinks(config.url + v1Value)
-				//fmt.Printf( "Checking %s\n", v1 )
+				// can't defer otherwise I lock up with linkChain
+				func() { <-sem }()
 				linkChan <- struct {string; linkType}{v1Value, v1Links}
 			}(v1)
 		}
+
+		// fill up the semaphore for our remaining requests so they can finish
+		go func() {
+			for i := 0; i < cap(sem); i++ {
+			    sem <- true
+			}
+		}()
 
 		// listen for the requests to come back and process them until we've
 		// exhausted the current breadth
