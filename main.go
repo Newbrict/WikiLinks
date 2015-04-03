@@ -13,6 +13,8 @@ import (
 
 var config struct {
 	url string
+	maxConcurrentRequests int
+	failedGETRetries int
 }
 
 func removeDuplicates( links []string ) []string {
@@ -82,11 +84,9 @@ func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 }
 
 func getWikiLinks(page string) []string{
-	retries := 3
-
 	var err error
 	var res *http.Response
-	for i := 0; i < retries; i++ {
+	for i := 0; i < config.failedGETRetries; i++ {
 		res, err = http.Get(page)
 		if err == nil {
 			break
@@ -97,7 +97,7 @@ func getWikiLinks(page string) []string{
 	}
 
 	if err != nil {
-		log.Fatalf("%s (failed after %d retries)\n", err, retries)
+		log.Fatalf("%s (failed after %d retries)\n", err, config.failedGETRetries)
 	}
 	defer res.Body.Close()
 
@@ -129,6 +129,8 @@ func getWikiLinks(page string) []string{
 
 func main() {
 	config.url = "http://en.wikipedia.com"
+	config.maxConcurrentRequests = 50
+	config.failedGETRetries = 3
 
 	// grab the input vars from the user
 	var srcWiki, dstWiki string
@@ -173,14 +175,12 @@ func main() {
 	type linkType []string
 	linkChan := make(chan struct {string; linkType})
 
-	// rate limiting
-	concurrency := 50
 
 	for !reached {
 		newLinkBreadth = make([]string, 0)
 
 		go func() {
-			sem := make(chan bool, concurrency)
+			sem := make(chan bool, config.maxConcurrentRequests)
 			// go to each link and get their respective links
 			for _, v1 := range currentLinkBreadth {
 			  sem <- true
