@@ -14,7 +14,7 @@ import (
 var config struct {
 	url string
 	maxConcurrentRequests int
-	failedGETRetries int
+	GETTries int
 }
 
 func removeDuplicates( links []string ) []string {
@@ -86,7 +86,7 @@ func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 func getWikiLinks(page string) []string{
 	var err error
 	var res *http.Response
-	for i := 0; i < config.failedGETRetries; i++ {
+	for i := 0; i < config.GETTries; i++ {
 		res, err = http.Get(page)
 		if err == nil {
 			break
@@ -97,7 +97,7 @@ func getWikiLinks(page string) []string{
 	}
 
 	if err != nil {
-		log.Fatalf("%s (failed after %d retries)\n", err, config.failedGETRetries)
+		log.Fatalf("%s (failed after %d retries)\n", err, config.GETTries)
 	}
 	defer res.Body.Close()
 
@@ -128,9 +128,12 @@ func getWikiLinks(page string) []string{
 }
 
 func main() {
+	// wikipedia, no https
 	config.url = "http://en.wikipedia.com"
+	// at most 50 concurrent GET requests
 	config.maxConcurrentRequests = 50
-	config.failedGETRetries = 3
+	// two retries
+	config.GETTries = 3
 
 	// grab the input vars from the user
 	var srcWiki, dstWiki string
