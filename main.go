@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 	"sort"
+	"time"
 )
 
 var config struct {
@@ -49,6 +50,7 @@ func stringifyWikiChain( links map[string]graph.Node, chain []graph.Node ) strin
 
 }
 
+// This is a dfs
 func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 	var ret []graph.Node
 
@@ -80,20 +82,24 @@ func extractLink( g *graph.Graph, n1, n2 graph.Node ) []graph.Node {
 }
 
 func getWikiLinks(page string) []string{
-	retries := 5
+	retries := 3
 
 	var err error
 	var res *http.Response
-	for i := 0; i<retries; i++ {
+	for i := 0; i < retries; i++ {
 		res, err = http.Get(page)
 		if err == nil {
 			break
 		}
+		// close and try again
+		res.Body.Close()
+		time.Sleep(time.Second)
 	}
 
 	if err != nil {
 		log.Fatalf("%s (failed after %d retries)\n", err, retries)
 	}
+	defer res.Body.Close()
 
 	unfilteredLinks := collectlinks.All(res.Body)
 	var filteredLinks []string
@@ -108,6 +114,8 @@ func getWikiLinks(page string) []string{
 				 !strings.Contains(ul, "Template:") &&
 				 !strings.Contains(ul, "Template_talk:") &&
 				 !strings.Contains(ul, "File:") &&
+				 !strings.Contains(ul, "Wikipedia:") &&
+				 !strings.Contains(ul, "Category:") &&
 				 !strings.Contains(ul, "Portal:") {
 				filteredLinks = append(filteredLinks, ul)
 			}
@@ -166,26 +174,25 @@ func main() {
 	linkChan := make(chan struct {string; linkType})
 
 	// rate limiting
-	concurrency := 100
+	concurrency := 50
 
 	for !reached {
 		newLinkBreadth = make([]string, 0)
 
-		sem := make(chan bool, concurrency)
-		// go to each link and get their respective links
-		for _, v1 := range currentLinkBreadth {
-		  sem <- true
-			go func( v1Value string) {
-				fmt.Printf( "Requesting %s\n", v1Value )
-				v1Links := getWikiLinks(config.url + v1Value)
-				// can't defer otherwise I lock up with linkChain
-				func() { <-sem }()
-				linkChan <- struct {string; linkType}{v1Value, v1Links}
-			}(v1)
-		}
-
-		// fill up the semaphore for our remaining requests so they can finish
 		go func() {
+			sem := make(chan bool, concurrency)
+			// go to each link and get their respective links
+			for _, v1 := range currentLinkBreadth {
+			  sem <- true
+				go func( v1Value string) {
+					defer func() { <-sem }()
+					fmt.Printf( "[ GET ] %s\n", v1Value )
+					v1Links := getWikiLinks(config.url + v1Value)
+					linkChan <- struct {string; linkType}{v1Value, v1Links}
+				}(v1)
+			}
+
+			// fill up the semaphore for our remaining requests so they can finish
 			for i := 0; i < cap(sem); i++ {
 			    sem <- true
 			}
@@ -197,12 +204,13 @@ func main() {
 		for i := 0; i<len(currentLinkBreadth); i++ {
 			ans := <- linkChan
 			v1 := ans.string
-			fmt.Printf("Processing %s\n", v1)
 			v1Links := ans.linkType
+			fmt.Printf("[ Processing ] %s\n", v1)
 			// add these to the graph and link them
 			for _, v2 := range v1Links {
 				// if the value isn't already in there
 				if _, ok := links[v2]; !ok {
+					fmt.Printf("[ Adding %s ==> %s] \n", v1, v2)
 					links[v2] = linkGraph.MakeNode()
 					linkGraph.MakeEdge(links[v1], links[v2])
 					v1LinksFiltered = append(v1LinksFiltered, v2)
